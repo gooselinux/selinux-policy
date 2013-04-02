@@ -20,7 +20,7 @@
 Summary: SELinux policy configuration
 Name: selinux-policy
 Version: 3.7.19
-Release: 54%{?dist}
+Release: 54%{?dist}.3
 License: GPLv2+
 Group: System Environment/Base
 Source: serefpolicy-%{version}.tgz
@@ -469,6 +469,21 @@ exit 0
 %endif
 
 %changelog
+* Tue Oct 26 2010 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.3
+- Fix init leaks
+Resolves: #644820
+
+* Wed Oct 13 2010 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.2
+- Allow mount to communicate with gfs_controld
+- Allow certmonger to search through directories that contain certs
+Resolves: #642607
+
+* Thu Sep 23 2010 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.1
+- Remove allow_corosync_rw_tmpfs boolean
+Resolves: #636488
+- Add cluster_var_lib_t type and label for /var/lib/cluster
+Resolves: #636489
+
 * Thu Sep 2 2010 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54
 - Allow clmvd to create tmpfs files
 Resolves: #629391
