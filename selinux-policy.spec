@@ -20,11 +20,12 @@
 Summary: SELinux policy configuration
 Name: selinux-policy
 Version: 3.7.19
-Release: 54%{?dist}.3
+Release: 54%{?dist}.5
 License: GPLv2+
 Group: System Environment/Base
 Source: serefpolicy-%{version}.tgz
 patch: policy-F13.patch
+patch1: policy-3.7.19_tmpfix.patch
 Source1: modules-targeted.conf
 Source2: booleans-targeted.conf
 Source3: Makefile.devel
@@ -202,6 +203,7 @@ Based off of reference policy: Checked out revision  2.20091117
 %prep 
 %setup -n serefpolicy-%{version} -q
 %patch -p1
+%patch1 -p1
 
 %install
 mkdir selinux_config
@@ -469,6 +471,17 @@ exit 0
 %endif
 
 %changelog
+* Wed Mar 16 2011 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.5
+- seunshare needs to be able to mounton nfs/cifs/fusefs homedirs
+Resolves: #684918
+
+* Wed Mar 16 2011 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.4
+- Fix to sandbox
+	* selinux-policy fixes for policycoreutils sandbox changes
+		- Fix seunshare to use more secure handling of /tmp
+		- Change to allow sandbox to run on nfs homedirs, add start python script
+#Resolves: #684918
+
 * Tue Oct 26 2010 Miroslav Grepl <mgrepl@redhat.com> 3.7.19-54.el6_0.3
 - Fix init leaks
 Resolves: #644820

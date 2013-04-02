@@ -1,0 +1,805 @@
+--- serefpolicy-3.7.19/policy/modules/apps/sandbox.te.tmpfix	2011-03-16 09:42:10.473107002 +0000
++++ serefpolicy-3.7.19/policy/modules/apps/sandbox.te	2011-03-16 09:43:26.209107001 +0000
+@@ -1,12 +1,18 @@
+ policy_module(sandbox,1.0.0)
+-
+ dbus_stub()
+ attribute sandbox_domain;
+ attribute sandbox_x_domain;
+-attribute sandbox_file_type;
+ attribute sandbox_web_type;
++attribute sandbox_file_type;
+ attribute sandbox_tmpfs_type;
+-attribute sandbox_x_type;
++attribute sandbox_type;
++
++type sandbox_exec_t;
++files_type(sandbox_exec_t)
++
++type sandbox_file_t, sandbox_file_type;
++files_type(sandbox_file_t)
++typealias sandbox_file_t alias { sandbox_x_file_t sandbox_web_file_t sandbox_net_file_t sandbox_min_file_t };
+ 
+ ########################################
+ #
+@@ -39,6 +45,11 @@
+ allow sandbox_xserver_t self:shm create_shm_perms;
+ allow sandbox_xserver_t self:tcp_socket create_stream_socket_perms;
+ 
++manage_dirs_pattern(sandbox_xserver_t, sandbox_file_t, sandbox_file_t)
++manage_files_pattern(sandbox_xserver_t, sandbox_file_t, sandbox_file_t)
++manage_sock_files_pattern(sandbox_xserver_t, sandbox_file_t, sandbox_file_t)
++allow sandbox_xserver_t sandbox_file_t:sock_file create_sock_file_perms;
++
+ manage_dirs_pattern(sandbox_xserver_t, sandbox_xserver_tmpfs_t, sandbox_xserver_tmpfs_t)
+ manage_files_pattern(sandbox_xserver_t, sandbox_xserver_tmpfs_t, sandbox_xserver_tmpfs_t)
+ manage_lnk_files_pattern(sandbox_xserver_t, sandbox_xserver_tmpfs_t, sandbox_xserver_tmpfs_t)
+@@ -71,6 +82,7 @@
+ files_search_home(sandbox_xserver_t)
+ fs_dontaudit_rw_tmpfs_files(sandbox_xserver_t)
+ fs_list_inotifyfs(sandbox_xserver_t)
++fs_search_auto_mountpoints(sandbox_xserver_t)
+ 
+ miscfiles_read_fonts(sandbox_xserver_t)
+ miscfiles_read_localization(sandbox_xserver_t)
+@@ -104,7 +116,6 @@
+ # sandbox local policy
+ #
+ 
+-## internal communication is often done using fifo and unix sockets.
+ allow sandbox_domain self:fifo_file manage_file_perms;
+ allow sandbox_domain self:sem create_sem_perms;
+ allow sandbox_domain self:shm create_shm_perms;
+@@ -116,6 +127,15 @@
+ dev_rw_all_inherited_chr_files(sandbox_domain)
+ dev_rw_all_inherited_blk_files(sandbox_domain)
+ 
++can_exec(sandbox_domain, sandbox_file_t)
++allow sandbox_domain sandbox_file_t:filesystem getattr;
++manage_files_pattern(sandbox_domain, sandbox_file_t, sandbox_file_t);
++manage_dirs_pattern(sandbox_domain, sandbox_file_t, sandbox_file_t);
++manage_sock_files_pattern(sandbox_domain, sandbox_file_t, sandbox_file_t);
++manage_fifo_files_pattern(sandbox_domain, sandbox_file_t, sandbox_file_t);
++manage_lnk_files_pattern(sandbox_domain, sandbox_file_t, sandbox_file_t);
++dontaudit sandbox_domain sandbox_file_t:dir mounton;
++
+ gen_require(`
+ 	type usr_t, lib_t, locale_t;
+ 	type var_t, var_run_t, rpm_log_t, locale_t;
+@@ -152,8 +172,9 @@
+ 
+ allow sandbox_x_domain self:unix_stream_socket create_stream_socket_perms;
+ 
+-allow sandbox_x_domain self:process { signal_perms getsched setpgid execstack execmem };
+-dontaudit sandbox_x_domain self:process signal;
++allow sandbox_x_domain self:process { signal_perms getsched setsched setpgid execstack execmem };
++dontaudit sandbox_x_domain sandbox_x_domain:process signal;
++dontaudit sandbox_x_domain sandbox_xserver_t:process signal;
+ 
+ allow sandbox_x_domain self:shm create_shm_perms;
+ allow sandbox_x_domain self:unix_stream_socket { connectto create_stream_socket_perms };
+@@ -161,6 +182,17 @@
+ allow sandbox_x_domain sandbox_xserver_t:unix_stream_socket connectto;
+ dontaudit sandbox_x_domain self:netlink_audit_socket { create_netlink_socket_perms nlmsg_relay };
+ 
++allow sandbox_x_domain sandbox_devpts_t:chr_file { rw_term_perms setattr };
++term_create_pty(sandbox_x_domain,sandbox_devpts_t)
++
++can_exec(sandbox_x_domain, sandbox_file_t)
++allow sandbox_x_domain sandbox_file_t:filesystem getattr;
++manage_files_pattern(sandbox_x_domain, sandbox_file_t, sandbox_file_t);
++manage_dirs_pattern(sandbox_x_domain, sandbox_file_t, sandbox_file_t);
++manage_sock_files_pattern(sandbox_x_domain, sandbox_file_t, sandbox_file_t);
++manage_fifo_files_pattern(sandbox_x_domain, sandbox_file_t, sandbox_file_t);
++manage_lnk_files_pattern(sandbox_x_domain, sandbox_file_t, sandbox_file_t);
++
+ domain_dontaudit_read_all_domains_state(sandbox_x_domain)
+ 
+ files_search_home(sandbox_x_domain)
+@@ -184,8 +216,7 @@
+ fs_getattr_tmpfs(sandbox_x_domain)
+ fs_getattr_xattr_fs(sandbox_x_domain)
+ fs_list_inotifyfs(sandbox_x_domain)
+-
+-storage_dontaudit_rw_fuse(sandbox_x_domain)
++fs_dontaudit_getattr_xattr_fs(sandbox_x_domain)
+ 
+ auth_dontaudit_read_login_records(sandbox_x_domain)
+ auth_dontaudit_write_login_records(sandbox_x_domain)
+@@ -198,20 +229,32 @@
+ miscfiles_read_localization(sandbox_x_domain)
+ miscfiles_dontaudit_setattr_fonts_cache_dirs(sandbox_x_domain)
+ 
++mta_dontaudit_read_spool_symlinks(sandbox_x_domain)
++
++selinux_get_fs_mount(sandbox_x_domain)
++selinux_validate_context(sandbox_x_domain)
++selinux_compute_access_vector(sandbox_x_domain)
++selinux_compute_create_context(sandbox_x_domain)
++selinux_compute_relabel_context(sandbox_x_domain)
++selinux_compute_user_contexts(sandbox_x_domain)
++seutil_read_default_contexts(sandbox_x_domain)
++
+ term_getattr_pty_fs(sandbox_x_domain)
+ term_use_ptmx(sandbox_x_domain)
++term_search_ptys(sandbox_x_domain)
++
++application_dontaudit_signal(sandbox_x_domain)
++application_dontaudit_sigkill(sandbox_x_domain)
+ 
+ logging_send_syslog_msg(sandbox_x_domain)
+ logging_dontaudit_search_logs(sandbox_x_domain)
+ 
+ miscfiles_read_fonts(sandbox_x_domain)
+ 
+-tunable_policy(`use_nfs_home_dirs',`
+-	fs_search_nfs(sandbox_x_domain)
+-')
++storage_dontaudit_rw_fuse(sandbox_x_domain)
+ 
+-tunable_policy(`use_samba_home_dirs',`
+-	fs_search_cifs(sandbox_x_domain)
++optional_policy(`
++	consolekit_dbus_chat(sandbox_x_domain)
+ ')
+ 
+ optional_policy(`
+@@ -243,7 +286,33 @@
+ userdom_read_user_home_content_symlinks(sandbox_x_domain)
+ userdom_search_user_home_content(sandbox_x_domain)
+ 
+-#============= sandbox_x_t ==============
++fs_search_auto_mountpoints(sandbox_x_domain)
++
++tunable_policy(`use_nfs_home_dirs',`
++	fs_search_auto_mountpoints(sandbox_x_domain)
++	fs_search_nfs(sandbox_xserver_t)
++	fs_read_nfs_files(sandbox_xserver_t)
++	fs_manage_nfs_dirs(sandbox_x_domain)
++	fs_manage_nfs_files(sandbox_x_domain)
++	fs_exec_nfs_files(sandbox_x_domain)
++')
++
++tunable_policy(`use_samba_home_dirs',`
++	fs_search_cifs(sandbox_xserver_t)
++	fs_read_cifs_files(sandbox_xserver_t)
++	fs_manage_cifs_dirs(sandbox_x_domain)
++	fs_manage_cifs_files(sandbox_x_domain)
++	fs_exec_cifs_files(sandbox_x_domain)
++')
++
++tunable_policy(`use_fusefs_home_dirs',`
++	fs_search_fusefs(sandbox_xserver_t)
++	fs_read_fusefs_files(sandbox_xserver_t)
++	fs_manage_fusefs_dirs(sandbox_x_domain)
++	fs_manage_fusefs_files(sandbox_x_domain)
++	fs_exec_fusefs_files(sandbox_x_domain)
++')
++
+ files_search_home(sandbox_x_t)
+ userdom_use_user_ptys(sandbox_x_t)
+ 
+@@ -262,22 +331,12 @@
+ 
+ auth_use_nsswitch(sandbox_x_client_t)
+ 
+-selinux_get_fs_mount(sandbox_x_client_t)
+-selinux_validate_context(sandbox_x_client_t)
+-selinux_compute_access_vector(sandbox_x_client_t)
+-selinux_compute_create_context(sandbox_x_client_t)
+-selinux_compute_relabel_context(sandbox_x_client_t)
+-selinux_compute_user_contexts(sandbox_x_client_t)
+-seutil_read_default_contexts(sandbox_x_client_t)
+-
+ optional_policy(`
+ 	hal_dbus_chat(sandbox_x_client_t)
+ ')
+ 
+-allow sandbox_web_t self:process setsched;
+-
+ optional_policy(`
+-        nsplugin_read_rw_files(sandbox_web_t)
++	nsplugin_read_rw_files(sandbox_x_client_t)
+ ')
+ 
+ ########################################
+@@ -288,7 +347,6 @@
+ 
+ allow sandbox_web_type self:capability { setuid setgid };
+ allow sandbox_web_type self:netlink_audit_socket nlmsg_relay;
+-allow sandbox_web_type self:process setsched;
+ dontaudit sandbox_web_type self:process setrlimit;
+ 
+ allow sandbox_web_type self:tcp_socket create_stream_socket_perms;
+@@ -303,7 +361,6 @@
+ dev_write_sound(sandbox_web_type)
+ dev_read_sound(sandbox_web_type)
+ 
+-# Browse the web, connect to printer
+ corenet_all_recvfrom_unlabeled(sandbox_web_type)
+ corenet_all_recvfrom_netlabel(sandbox_web_type)
+ corenet_tcp_sendrecv_all_if(sandbox_web_type)
+@@ -333,15 +390,16 @@
+ corenet_sendrecv_ftp_client_packets(sandbox_web_type)
+ corenet_sendrecv_ipp_client_packets(sandbox_web_type)
+ corenet_sendrecv_generic_client_packets(sandbox_web_type)
+-# Should not need other ports
++
+ corenet_dontaudit_tcp_sendrecv_generic_port(sandbox_web_type)
+ corenet_dontaudit_tcp_bind_generic_port(sandbox_web_type)
+ 
+ files_dontaudit_getattr_all_dirs(sandbox_web_type)
+ files_dontaudit_list_mnt(sandbox_web_type)
+ 
+-#fs_dontaudit_rw_anon_inodefs_files(sandbox_web_type)
++# the bug in pulseaudio, needed by fedora13
+ fs_rw_anon_inodefs_files(sandbox_web_type)
++#fs_dontaudit_rw_anon_inodefs_files(sandbox_web_type)
+ fs_dontaudit_getattr_all_fs(sandbox_web_type)
+ 
+ storage_dontaudit_getattr_fixed_disk_dev(sandbox_web_type)
+@@ -370,17 +428,12 @@
+ ')
+ 
+ optional_policy(`
+-	consolekit_dbus_chat(sandbox_web_type)
+-')
+-
+-optional_policy(`
+ 	hal_dbus_chat(sandbox_web_type)
+ ')
+ 
+ optional_policy(`
+ 	nsplugin_read_rw_files(sandbox_web_type)
+ 	nsplugin_rw_exec(sandbox_web_type)
+-#	nsplugin_manage_rw(sandbox_web_type)
+ ')
+ 
+ optional_policy(`
+@@ -422,4 +475,3 @@
+ 	mozilla_dontaudit_rw_user_home_files(sandbox_xserver_t)
+ 	mozilla_dontaudit_rw_user_home_files(sandbox_x_domain)
+ ')
+-
+--- serefpolicy-3.7.19/policy/modules/apps/sandbox.fc.tmpfix	2011-03-16 09:42:17.472107001 +0000
++++ serefpolicy-3.7.19/policy/modules/apps/sandbox.fc	2011-03-16 09:43:26.209107001 +0000
+@@ -1 +1,2 @@
+-# No types are sandbox_exec_t
++
++/usr/share/sandbox/start --	gen_context(system_u:object_r:sandbox_exec_t,s0)
+--- serefpolicy-3.7.19/policy/modules/apps/sandbox.if.tmpfix	2011-03-16 09:42:24.903107000 +0000
++++ serefpolicy-3.7.19/policy/modules/apps/sandbox.if	2011-03-16 09:43:26.209107001 +0000
+@@ -20,9 +20,9 @@
+ interface(`sandbox_transition',`
+ 	gen_require(`
+ 		type sandbox_xserver_t;
++		type sandbox_file_t;
+ 		attribute sandbox_domain;
+ 		attribute sandbox_x_domain;
+-		attribute sandbox_file_type;
+ 		attribute sandbox_tmpfs_type;
+ 	')
+ 
+@@ -49,27 +49,29 @@
+ 	dontaudit sandbox_x_domain $1:tcp_socket rw_socket_perms;
+ 	dontaudit sandbox_x_domain $1:udp_socket rw_socket_perms;
+ 	dontaudit sandbox_x_domain $1:unix_stream_socket { read write };
+-	dontaudit sandbox_x_domain $1:process signal;
++	dontaudit sandbox_x_domain $1:process { signal sigkill };
+ 	
+ 	allow $1 sandbox_tmpfs_type:file manage_file_perms;
+ 	dontaudit $1 sandbox_tmpfs_type:file manage_file_perms;
+ 
+-	manage_files_pattern($1, sandbox_file_type, sandbox_file_type);
+-	manage_dirs_pattern($1, sandbox_file_type, sandbox_file_type);
+-	manage_sock_files_pattern($1, sandbox_file_type, sandbox_file_type);
+-	manage_fifo_files_pattern($1, sandbox_file_type, sandbox_file_type);
+-	manage_lnk_files_pattern($1, sandbox_file_type, sandbox_file_type);
+-	relabel_dirs_pattern($1, sandbox_file_type, sandbox_file_type)
+-	relabel_files_pattern($1, sandbox_file_type, sandbox_file_type)
+-	relabel_lnk_files_pattern($1, sandbox_file_type, sandbox_file_type)
+-	relabel_fifo_files_pattern($1, sandbox_file_type, sandbox_file_type)
+-	relabel_sock_files_pattern($1, sandbox_file_type, sandbox_file_type)
++	can_exec($1, sandbox_file_t)
++	allow $1 sandbox_file_t:filesystem getattr;
++	manage_files_pattern($1, sandbox_file_t, sandbox_file_t);
++	manage_dirs_pattern($1, sandbox_file_t, sandbox_file_t);
++	manage_sock_files_pattern($1, sandbox_file_t, sandbox_file_t);
++	manage_fifo_files_pattern($1, sandbox_file_t, sandbox_file_t);
++	manage_lnk_files_pattern($1, sandbox_file_t, sandbox_file_t);
++	relabel_dirs_pattern($1, sandbox_file_t, sandbox_file_t)
++	relabel_files_pattern($1, sandbox_file_t, sandbox_file_t)
++	relabel_lnk_files_pattern($1, sandbox_file_t, sandbox_file_t)
++	relabel_fifo_files_pattern($1, sandbox_file_t, sandbox_file_t)
++	relabel_sock_files_pattern($1, sandbox_file_t, sandbox_file_t)
+ ')
+ 
+ ########################################
+ ## <summary>
+ ##	Creates types and rules for a basic
+-##	qemu process domain.
++##	sandbox process domain.
+ ## </summary>
+ ## <param name="prefix">
+ ##	<summary>
+@@ -81,31 +83,21 @@
+ 
+ 	gen_require(`
+ 		attribute sandbox_domain;
+-		attribute sandbox_file_type;
+-		attribute sandbox_x_type;
++		type sandbox_file_t;
++		attribute sandbox_type;
+ 	')
++	type $1_t, sandbox_domain, sandbox_type;
+ 
+-	type $1_t, sandbox_domain, sandbox_x_type;
+ 	application_type($1_t)
+ 
+ 	mls_rangetrans_target($1_t)
+ 	mcs_untrusted_proc($1_t)
+-
+-	type $1_file_t, sandbox_file_type;
+-	files_type($1_file_t)
+-
+-	can_exec($1_t, $1_file_t)
+-	manage_dirs_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_lnk_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_fifo_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_sock_files_pattern($1_t, $1_file_t, $1_file_t)
+ ')
+ 
+ ########################################
+ ## <summary>
+ ##	Creates types and rules for a basic
+-##	qemu process domain.
++##	sandbox process domain.
+ ## </summary>
+ ## <param name="prefix">
+ ##	<summary>
+@@ -117,29 +109,16 @@
+ 	gen_require(`
+ 		type xserver_exec_t, sandbox_devpts_t;
+ 		type sandbox_xserver_t;
++		type sandbox_exec_t;
+ 		attribute sandbox_domain, sandbox_x_domain;
+-		attribute sandbox_file_type, sandbox_tmpfs_type;
++		attribute sandbox_tmpfs_type;
++		attribute sandbox_type;
+ 	')
+ 
+-	type $1_t, sandbox_x_domain;
++	type $1_t, sandbox_x_domain, sandbox_type;
+ 	application_type($1_t)
+ 	mcs_untrusted_proc($1_t)
+ 
+-	type $1_file_t, sandbox_file_type;
+-	files_type($1_file_t)
+-
+-	can_exec($1_t, $1_file_t)
+-	manage_dirs_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_lnk_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_fifo_files_pattern($1_t, $1_file_t, $1_file_t)
+-	manage_sock_files_pattern($1_t, $1_file_t, $1_file_t)
+-
+-	type $1_devpts_t;
+-	term_pty($1_devpts_t)
+-	term_create_pty($1_t, $1_devpts_t)
+-	allow $1_t $1_devpts_t:chr_file { rw_chr_file_perms setattr };
+-
+ 	# window manager
+ 	miscfiles_setattr_fonts_cache_dirs($1_t)
+ 	allow $1_t self:capability setuid;
+@@ -151,42 +130,30 @@
+ 	type $1_client_tmpfs_t, sandbox_tmpfs_type;
+ 	files_tmpfs_file($1_client_tmpfs_t)
+ 
+-	term_search_ptys($1_t)
+-	allow $1_client_t sandbox_devpts_t:chr_file { rw_term_perms setattr };
+-	term_create_pty($1_client_t,sandbox_devpts_t)
+-
+ 	manage_files_pattern($1_client_t, $1_client_tmpfs_t, $1_client_tmpfs_t)
++	manage_files_pattern($1_t, $1_client_tmpfs_t, $1_client_tmpfs_t)
+ 	fs_tmpfs_filetrans($1_client_t, $1_client_tmpfs_t, file )
++	fs_tmpfs_filetrans($1_t, $1_client_tmpfs_t, file )
+ 	# Pulseaudio tmpfs files with different MCS labels
+ 	dontaudit $1_client_t $1_client_tmpfs_t:file { read write };
++	dontaudit $1_t $1_client_tmpfs_t:file { read write };
+ 	allow sandbox_xserver_t $1_client_tmpfs_t:file { read write };
+ 
+ 	domtrans_pattern($1_t, xserver_exec_t, sandbox_xserver_t)
+ 	allow $1_t sandbox_xserver_t:process signal_perms;
+ 
+-	domtrans_pattern($1_t, $1_file_t, $1_client_t)
+-	domain_entry_file($1_client_t,  $1_file_t)
++	domtrans_pattern($1_t, sandbox_exec_t, $1_client_t)
++	domain_entry_file($1_client_t,  sandbox_exec_t)
+ 
+ 	# Random tmpfs_t that gets created when you run X. 
+ 	fs_rw_tmpfs_files($1_t)
+ 
+-	manage_dirs_pattern(sandbox_xserver_t, $1_file_t, $1_file_t)
+-	manage_files_pattern(sandbox_xserver_t, $1_file_t, $1_file_t)
+-	manage_sock_files_pattern(sandbox_xserver_t, $1_file_t, $1_file_t)
+-	allow sandbox_xserver_t $1_file_t:sock_file create_sock_file_perms;
+ 	ps_process_pattern(sandbox_xserver_t, $1_client_t)
+ 	ps_process_pattern(sandbox_xserver_t, $1_t)
+ 	allow sandbox_xserver_t $1_client_t:shm rw_shm_perms;
+ 	allow sandbox_xserver_t $1_t:shm rw_shm_perms;
+ 	allow $1_client_t $1_t:unix_stream_socket connectto;
+ 	allow $1_t $1_client_t:unix_stream_socket connectto;
+-
+-	can_exec($1_client_t, $1_file_t)
+-	manage_dirs_pattern($1_client_t, $1_file_t, $1_file_t)
+-	manage_files_pattern($1_client_t, $1_file_t, $1_file_t)
+-	manage_lnk_files_pattern($1_client_t, $1_file_t, $1_file_t)
+-	manage_fifo_files_pattern($1_client_t, $1_file_t, $1_file_t)
+-	manage_sock_files_pattern($1_client_t, $1_file_t, $1_file_t)
+ ')
+ 
+ ########################################
+@@ -208,26 +175,26 @@
+ 	allow $1 sandbox_xserver_tmpfs_t:file rw_file_perms;
+ ')
+ 
+-#######################################
++########################################
+ ## <summary>
+-## allow domain to read
+-## sandbox tmpfs files
++##	allow domain to read
++##	sandbox tmpfs files
+ ## </summary>
+ ## <param name="domain">
+-## <summary>
+-## Domain allowed access
+-## </summary>
++##	<summary>
++##	Domain allowed access
++##	</summary>
+ ## </param>
+ #
+ interface(`sandbox_read_tmpfs_files',`
+-   gen_require(`
+-       attribute sandbox_tmpfs_type;
+-   ')
++	gen_require(`
++		attribute sandbox_tmpfs_type;
++	')
+ 
+-   allow $1 sandbox_tmpfs_type:file read_file_perms;
++	allow $1 sandbox_tmpfs_type:file read_file_perms;
+ ')
+ 
+-#########################################
++########################################
+ ## <summary>
+ ##	allow domain to manage
+ ##	sandbox tmpfs files
+@@ -258,10 +225,10 @@
+ #
+ interface(`sandbox_delete_files',`
+ 	gen_require(`
+-		attribute sandbox_file_type;
++		type sandbox_file_t;
+ 	')
+ 
+-	delete_files_pattern($1, sandbox_file_type, sandbox_file_type)
++	delete_files_pattern($1, sandbox_file_t, sandbox_file_t)
+ ')
+ 
+ ########################################
+@@ -276,10 +243,10 @@
+ #
+ interface(`sandbox_delete_sock_files',`
+ 	gen_require(`
+-		attribute sandbox_file_type;
++		type sandbox_file_t;
+ 	')
+ 
+-	delete_sock_files_pattern($1, sandbox_file_type, sandbox_file_type)
++	delete_sock_files_pattern($1, sandbox_file_t, sandbox_file_t)
+ ')
+ 
+ ########################################
+@@ -295,10 +262,10 @@
+ #
+ interface(`sandbox_setattr_dirs',`
+ 	gen_require(`
+-		attribute sandbox_file_type;
++		type sandbox_file_t;
+ 	')
+ 
+-	allow $1 sandbox_file_type:dir setattr;
++	allow $1 sandbox_file_t:dir setattr;
+ ')
+ 
+ ########################################
+@@ -313,10 +280,10 @@
+ #
+ interface(`sandbox_delete_dirs',`
+ 	gen_require(`
+-		attribute sandbox_file_type;
++		type sandbox_file_t;
+ 	')
+ 
+-	delete_dirs_pattern($1, sandbox_file_type, sandbox_file_type)
++	delete_dirs_pattern($1, sandbox_file_t, sandbox_file_t)
+ ')
+ 
+ ########################################
+@@ -331,8 +298,8 @@
+ #
+ interface(`sandbox_list',`
+ 	gen_require(`
+-		attribute sandbox_file_type;
++		type sandbox_file_t;
+ 	')
+ 
+-	allow $1 sandbox_file_type:dir list_dir_perms;
++	allow $1 sandbox_file_t:dir list_dir_perms;
+ ')
+--- serefpolicy-3.7.19/policy/modules/apps/seunshare.if.tmpfix	2011-03-16 09:42:57.033107000 +0000
++++ serefpolicy-3.7.19/policy/modules/apps/seunshare.if	2011-03-16 09:43:37.801107001 +0000
+@@ -2,6 +2,57 @@
+ 
+ ########################################
+ ## <summary>
++##	Execute a domain transition to run seunshare.
++## </summary>
++## <param name="domain">
++## <summary>
++##	Domain allowed to transition.
++## </summary>
++## </param>
++#
++interface(`seunshare_domtrans',`
++	gen_require(`
++		type seunshare_t, seunshare_exec_t;
++	')
++
++	domtrans_pattern($1, seunshare_exec_t, seunshare_t)
++')
++
++########################################
++## <summary>
++##	Execute seunshare in the seunshare domain, and
++##	allow the specified role the seunshare domain.
++## </summary>
++## <param name="domain">
++##	<summary>
++##	Domain allowed to transition.
++##	</summary>
++## </param>
++## <param name="role">
++##	<summary>
++##	Role allowed access.
++##	</summary>
++## </param>
++#
++interface(`seunshare_run',`
++	gen_require(`
++		type seunshare_t;
++	')
++
++	seunshare_domtrans($1)
++	role $2 types seunshare_t;
++
++	allow $1 seunshare_t:process signal_perms;
++
++	ifdef(`hide_broken_symptoms', `
++		dontaudit seunshare_t $1:tcp_socket rw_socket_perms;
++		dontaudit seunshare_t $1:udp_socket rw_socket_perms;
++		dontaudit seunshare_t $1:unix_stream_socket rw_socket_perms;
++	')
++')
++
++########################################
++## <summary>
+ ##	The role template for the seunshare module.
+ ## </summary>
+ ## <param name="role_prefix">
+@@ -42,6 +93,9 @@
+ 	allow $1_seunshare_t $3:process transition;
+ 	dontaudit $1_seunshare_t $3:process { noatsecure siginh rlimitinh };
+ 
++	corecmd_bin_domtrans($1_seunshare_t, $1_t)
++	corecmd_shell_domtrans($1_seunshare_t, $1_t)
++
+ 	ifdef(`hide_broken_symptoms', `
+ 		dontaudit $1_seunshare_t $3:socket_class_set { read write };
+ 	')
+--- serefpolicy-3.7.19/policy/modules/system/application.if.tmpfix	2011-03-16 10:24:49.471107001 +0000
++++ serefpolicy-3.7.19/policy/modules/system/application.if	2011-03-16 10:30:12.804107001 +0000
+@@ -147,4 +147,40 @@
+ 	')
+ 
+ 	allow $1 application_domain_type:process signal;
+-')    
++')
++
++######################################
++## <summary>
++##  Dontaudit signal sent to all application domains.
++## </summary>
++## <param name="domain">
++##  <summary>
++##  Domain to not audit.
++##  </summary>
++## </param>
++#
++interface(`application_dontaudit_signal',`
++    gen_require(`
++        attribute application_domain_type;
++    ')
++
++    dontaudit $1 application_domain_type:process signal;
++')
++
++######################################
++## <summary>
++##  Dontaudit kill signal sent to all application domains.
++## </summary>
++## <param name="domain">
++##  <summary>
++##  Domain to not audit.
++##  </summary>
++## </param>
++#
++interface(`application_dontaudit_sigkill',`
++    gen_require(`
++        attribute application_domain_type;
++    ')
++
++    dontaudit $1 application_domain_type:process sigkill;
++')   
+--- serefpolicy-3.7.19/policy/modules/kernel/files.if.tmpfiles	2011-03-16 10:50:08.223107000 +0000
++++ serefpolicy-3.7.19/policy/modules/kernel/files.if	2011-03-16 10:51:43.385107001 +0000
+@@ -4158,6 +4158,24 @@
+ 	rw_sock_files_pattern($1, tmp_t, tmp_t)
+ ')
+ 
++#######################################
++## <summary>
++##  Relabel a dir from the type used in /tmp.
++## </summary>
++## <param name="domain">
++##  <summary>
++##  Domain allowed access.
++##  </summary>
++## </param>
++#
++interface(`files_relabelfrom_tmp_dirs',`
++    gen_require(`
++        type tmp_t;
++    ')
++
++    relabelfrom_dirs_pattern($1, tmp_t, tmp_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Set the attributes of all tmp directories.
+--- serefpolicy-3.7.19/policy/global_tunables.tmpfiles	2011-03-16 10:58:07.300107001 +0000
++++ serefpolicy-3.7.19/policy/global_tunables	2011-03-16 10:58:35.631107001 +0000
+@@ -89,6 +89,13 @@
+ 
+ ## <desc>
+ ## <p>
++## Support fusefs home directories
++## </p>
++## </desc>
++gen_tunable(use_fusefs_home_dirs,false)
++
++## <desc>
++## <p>
+ ## Allow users to run TCP servers (bind to ports and accept connection from
+ ## the same domain and outside users)  disabling this forces FTP passive mode
+ ## and may change other protocols.
+--- serefpolicy-3.7.19/policy/modules/apps/seunshare.te.tmpfix	2011-03-16 09:42:40.168107000 +0000
++++ serefpolicy-3.7.19/policy/modules/apps/seunshare.te	2011-03-16 19:18:46.986851002 +0000
+@@ -1,5 +1,4 @@
+-
+-policy_module(seunshare, 1.0.1)
++policy_module(seunshare, 1.1.0)
+ 
+ ########################################
+ #
+@@ -13,7 +12,7 @@
+ #
+ # seunshare local policy
+ #
+-allow seunshare_domain self:capability { fowner setuid dac_override setpcap sys_admin sys_nice };
++allow seunshare_domain self:capability { fowner setgid setuid dac_override setpcap sys_admin sys_nice };
+ allow seunshare_domain self:process { fork setexec signal getcap setcap setsched };
+ 
+ allow seunshare_domain self:fifo_file rw_file_perms;
+@@ -27,6 +26,8 @@
+ files_search_all(seunshare_domain)
+ files_read_etc_files(seunshare_domain)
+ files_mounton_all_poly_members(seunshare_domain)
++files_manage_generic_tmp_dirs(seunshare_domain)
++files_relabelfrom_tmp_dirs(seunshare_domain)
+ 
+ fs_manage_cgroup_dirs(seunshare_domain)
+ fs_manage_cgroup_files(seunshare_domain)
+@@ -38,6 +39,19 @@
+ miscfiles_read_localization(seunshare_domain)
+ 
+ userdom_use_user_terminals(seunshare_domain)
++userdom_list_user_home_content(seunshare_domain)
++
++tunable_policy(`use_nfs_home_dirs',`
++       fs_mounton_nfs(seunshare_domain)
++')
++
++tunable_policy(`use_samba_home_dirs',`
++       fs_mounton_cifs(seunshare_domain)
++')
++
++tunable_policy(`use_fusefs_home_dirs',`
++       fs_mounton_fusefs(seunshare_domain)
++')
+ 
+ ifdef(`hide_broken_symptoms', `
+ 	fs_dontaudit_rw_anon_inodefs_files(seunshare_domain)
+@@ -47,4 +61,3 @@
+ 		mozilla_dontaudit_manage_user_home_files(seunshare_domain)
+ 	')
+ ')
+-
+--- serefpolicy-3.7.19/policy/modules/kernel/filesystem.if.tmpfix	2011-03-16 10:44:33.391107001 +0000
++++ serefpolicy-3.7.19/policy/modules/kernel/filesystem.if	2011-03-16 19:32:13.973851002 +0000
+@@ -1779,6 +1779,24 @@
+ 	allow $1 fusefs_t:filesystem unmount;
+ ')
+ 
++#######################################
++## <summary>
++##     Mounton a FUSEFS filesystem.
++## </summary>
++## <param name="domain">
++##     <summary>
++##     Domain allowed access.
++##     </summary>
++## </param>
++#
++interface(`fs_mounton_fusefs',`
++		gen_require(`
++			type fusefs_t;
++	')
++
++	allow $1 fusefs_t:dir mounton;
++')
++
+ ########################################
+ ## <summary>
+ ##	Search directories
+@@ -1897,6 +1915,25 @@
+ 	manage_files_pattern($1, fusefs_t, fusefs_t)
+ ')
+ 
++#####################################
++## <summary>
++##     Execute files on a FUSEFS filesystem.
++## </summary>
++## <param name="domain">
++##     <summary>
++##     Domain allowed access.
++##     </summary>
++## </param>
++#
++interface(`fs_exec_fusefs_files',`
++       gen_require(`
++               type fusefs_t;
++       ')
++
++       allow $1 fusefs_t:dir list_dir_perms;
++       exec_files_pattern($1, fusefs_t, fusefs_t)
++')
++
+ ########################################
+ ## <summary>
+ ##	Do not audit attempts to create,
